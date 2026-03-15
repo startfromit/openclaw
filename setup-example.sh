@@ -1,24 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export HOST=192.168.0.124 # change this ip to your target ip
+# change these to official openclaw image if your network allows you to do so
+searxng_x86_image=registry.cn-hangzhou.aliyuncs.com/eliteunited/docker.io.searxng.searxng:latest
+openclaw_x86_image=registry.cn-hangzhou.aliyuncs.com/eliteunited/ghcr.io.openclaw.openclaw:latest
+if [[ $(arch) == "arm64" ]];then
+  searxng_x86_image=registry.cn-hangzhou.aliyuncs.com/eliteunited/docker.io.searxng.searxng-arm64:latest
+  openclaw_x86_image=registry.cn-hangzhou.aliyuncs.com/eliteunited/ghcr.io.openclaw.openclaw-arm64:latest
+fi
 
+export HOST=192.168.0.124 # change this ip to your target ip
 ##=====openclaw=====##
 export OPENCLAW_BIND_HOST=${HOST}
-export REUSE_EXISTING_IMAGE=true
-export OPENCLAW_IMAGE=registry.cn-hangzhou.aliyuncs.com/eliteunited/ghcr.io.openclaw.openclaw-arm64:latest # change this to official openclaw image if your network allows you to do so
+export OPENCLAW_IMAGE=${openclaw_x86_image} 
 export COMPOSE_FILE=./docker-compose-searxng-example.yml
-export OPENCLAW_CONFIG_DIR=/Users/yu/Projects/app_data/openclaw
-export OPENCLAW_WORKSPACE_DIR=/Users/yu/Projects/app_data/openclaw/workspace
+export OPENCLAW_CONFIG_DIR=${HOME}/Projects/app_data/openclaw # change this to your desired directory
+export OPENCLAW_WORKSPACE_DIR=${HOME}/Projects/app_data/openclaw/workspace # change this to your desired directory
 export OPENCLAW_GATEWAY_PORT=12345 # change this port to whatever you want
 export OPENCLAW_BRIDGE_PORT=12346 # change this port to whatever you want
 export OPENCLAW_GATEWAY_BIND=loopback
+export REUSE_EXISTING_IMAGE=true
+export OPENCLAW_EXTENSIONS="ollama feishu discord slack whatsapp synology-chat imessage" # only works when REUSE_EXISTING_IMAGE=false and OPENCLAW_IMAGE=openclaw:local
 
 ##=====searXNG=====##
 export SEARXNG_PORT=12347 # change this port to whatever you want
 export SEARXNG_HOSTNAME=${HOST}:${SEARXNG_PORT}
-export SEARXNG_SETTINGS_DIR=/Users/yu/Projects/app_data/searxng
-export SEARXNG_IMAGE=registry.cn-hangzhou.aliyuncs.com/eliteunited/docker.io.searxng.searxng-arm64:latest # change this to official searxng image if your network allows you to do so
+export SEARXNG_SETTINGS_DIR=${HOME}/Projects/app_data/searxng
+export SEARXNG_IMAGE=${searxng_x86_image}
 
 if [[ -n "${1:-}" ]];then
     docker compose -f ${COMPOSE_FILE} "$1"
@@ -124,4 +132,10 @@ cat .env
 docker compose -f ${COMPOSE_FILE} stop
 docker compose -f ${COMPOSE_FILE} up -d
 
-echo "docker compose -f docker-compose-searxng-example.yml run --rm openclaw-cli devices list"
+echo ""
+echo "setup completed"
+echo "useful commands:"
+echo "docker compose -f ${COMPOSE_FILE} run --rm openclaw-cli configure # select Model or Channels if you choose skip during onboarding"
+echo "useful tips:"
+echo "cd ${OPENCLAW_CONFIG_DIR} && git init"
+echo "cd ${OPENCLAW_WORKSPACE_DIR} && rm -rf .git && git init"
