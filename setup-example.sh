@@ -21,6 +21,7 @@ export OPENCLAW_BRIDGE_PORT=12346 # change this port to whatever you want
 export OPENCLAW_GATEWAY_BIND=lan # do not change or installation will fail, will be changed to lan during setup
 export REUSE_EXISTING_IMAGE=true
 export OPENCLAW_EXTENSIONS="ollama feishu discord slack whatsapp synology-chat imessage" # only works when REUSE_EXISTING_IMAGE=false and OPENCLAW_IMAGE=openclaw:local
+export OPENCLAW_DOCKER_APT_PACKAGES="curl wget himalaya ffmpeg build-essential" # only works when REUSE_EXISTING_IMAGE=false and OPENCLAW_IMAGE=openclaw:local
 
 ##=====searXNG=====##
 export SEARXNG_PORT=12347 # change this port to whatever you want
