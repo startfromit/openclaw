@@ -436,7 +436,7 @@ if [[ "$REUSE_EXISTING_IMAGE" == "true" ]]; then
   ## check local image existance      
   echo "==> Reusing existing image: ${IMAGE_NAME}"
   if ! docker image ls | grep "${IMAGE_NAME}";then
-    echo "${IMAGE_NAME} not exist"
+    echo "${IMAGE_NAME} not exist, run docker pull first"
     exit 1
   fi
 else

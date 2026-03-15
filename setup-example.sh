@@ -3,10 +3,10 @@ set -euo pipefail
 
 # change these to official openclaw image if your network allows you to do so
 searxng_x86_image=registry.cn-hangzhou.aliyuncs.com/eliteunited/docker.io.searxng.searxng:latest
-openclaw_x86_image=registry.cn-hangzhou.aliyuncs.com/eliteunited/ghcr.io.openclaw.openclaw:latest
+openclaw_x86_image=registry.cn-hangzhou.aliyuncs.com/eliteunited/openclaw:2026.3.12
 if [[ $(arch) == "arm64" ]];then
   searxng_x86_image=registry.cn-hangzhou.aliyuncs.com/eliteunited/docker.io.searxng.searxng-arm64:latest
-  openclaw_x86_image=registry.cn-hangzhou.aliyuncs.com/eliteunited/ghcr.io.openclaw.openclaw-arm64:latest
+  openclaw_x86_image=registry.cn-hangzhou.aliyuncs.com/eliteunited/openclaw:2026.3.12-arm64
 fi
 
 export HOST=192.168.0.124 # change this ip to your target ip
@@ -181,10 +181,8 @@ cfg.setdefault("tools", {}).update({
             "enabled": True,
             "maxChars": 50000,
             "maxCharsCap": 50000,
-            "timeoutSeconds": 30,
             "cacheTtlMinutes": 15,
-            "maxRedirects": 3,
-            "readability": True
+            "maxRedirects": 3
         }
     }
 })
