@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
-EXTRA_COMPOSE_FILE="$ROOT_DIR/docker-compose.extra.yml"
+COMPOSE_FILE=${COMPOSE_FILE:-$ROOT_DIR/docker-compose.yml}
+EXTRA_COMPOSE_FILE=${EXTRA_COMPOSE_FILE:-$ROOT_DIR/docker-compose.extra.yml}
 IMAGE_NAME="${OPENCLAW_IMAGE:-openclaw:local}"
 EXTRA_MOUNTS="${OPENCLAW_EXTRA_MOUNTS:-}"
 HOME_VOLUME_NAME="${OPENCLAW_HOME_VOLUME:-}"
@@ -11,6 +11,7 @@ RAW_SANDBOX_SETTING="${OPENCLAW_SANDBOX:-}"
 SANDBOX_ENABLED=""
 DOCKER_SOCKET_PATH="${OPENCLAW_DOCKER_SOCKET:-}"
 TIMEZONE="${OPENCLAW_TZ:-}"
+REUSE_EXISTING_IMAGE="${REUSE_EXISTING_IMAGE:-false}"
 
 fail() {
   echo "ERROR: $*" >&2
@@ -106,7 +107,9 @@ ensure_control_ui_allowed_origins() {
 
   local allowed_origin_json
   local current_allowed_origins
-  allowed_origin_json="$(printf '["http://127.0.0.1:%s"]' "$OPENCLAW_GATEWAY_PORT")"
+
+  allowed_origin_json="[\"http://${OPENCLAW_BIND_HOST}:${OPENCLAW_GATEWAY_PORT}\",\"http://127.0.0.1:${OPENCLAW_GATEWAY_PORT}\"]"
+
   current_allowed_origins="$(
     docker compose "${COMPOSE_ARGS[@]}" run --rm openclaw-cli \
       config get gateway.controlUi.allowedOrigins 2>/dev/null || true
@@ -429,20 +432,29 @@ upsert_env "$ENV_FILE" \
   OPENCLAW_ALLOW_INSECURE_PRIVATE_WS \
   OPENCLAW_TZ
 
-if [[ "$IMAGE_NAME" == "openclaw:local" ]]; then
-  echo "==> Building Docker image: $IMAGE_NAME"
-  docker build \
-    --build-arg "OPENCLAW_DOCKER_APT_PACKAGES=${OPENCLAW_DOCKER_APT_PACKAGES}" \
-    --build-arg "OPENCLAW_EXTENSIONS=${OPENCLAW_EXTENSIONS}" \
-    --build-arg "OPENCLAW_INSTALL_DOCKER_CLI=${OPENCLAW_INSTALL_DOCKER_CLI:-}" \
-    -t "$IMAGE_NAME" \
-    -f "$ROOT_DIR/Dockerfile" \
-    "$ROOT_DIR"
-else
-  echo "==> Pulling Docker image: $IMAGE_NAME"
-  if ! docker pull "$IMAGE_NAME"; then
-    echo "ERROR: Failed to pull image $IMAGE_NAME. Please check the image name and your access permissions." >&2
+if [[ "$REUSE_EXISTING_IMAGE" == "true" ]]; then
+  ## check local image existance      
+  echo "==> Reusing existing image: ${IMAGE_NAME}"
+  if ! docker image ls | grep "${IMAGE_NAME}";then
+    echo "${IMAGE_NAME} not exist"
     exit 1
+  fi
+else
+  if [[ "$IMAGE_NAME" == "openclaw:local" ]]; then
+    echo "==> Building Docker image: $IMAGE_NAME"
+    docker build \
+      --build-arg "OPENCLAW_DOCKER_APT_PACKAGES=${OPENCLAW_DOCKER_APT_PACKAGES}" \
+      --build-arg "OPENCLAW_EXTENSIONS=${OPENCLAW_EXTENSIONS}" \
+      --build-arg "OPENCLAW_INSTALL_DOCKER_CLI=${OPENCLAW_INSTALL_DOCKER_CLI:-}" \
+      -t "$IMAGE_NAME" \
+      -f "$ROOT_DIR/Dockerfile" \
+      "$ROOT_DIR"
+  else
+    echo "==> Pulling Docker image: $IMAGE_NAME"
+    if ! docker pull "$IMAGE_NAME"; then
+      echo "ERROR: Failed to pull image $IMAGE_NAME. Please check the image name and your access permissions." >&2
+      exit 1
+    fi
   fi
 fi
 
