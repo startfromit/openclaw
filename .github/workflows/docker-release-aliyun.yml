@@ -26,7 +26,7 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   REGISTRY: registry.cn-hangzhou.aliyuncs.com
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: eliteunited/openclaw
   OPENCLAW_DOCKER_APT_PACKAGES: "curl wget himalaya ffmpeg build-essential"
 
 jobs:
