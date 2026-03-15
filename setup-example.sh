@@ -18,7 +18,7 @@ export OPENCLAW_CONFIG_DIR=${HOME}/Projects/app_data/openclaw # change this to y
 export OPENCLAW_WORKSPACE_DIR=${HOME}/Projects/app_data/openclaw/workspace # change this to your desired directory
 export OPENCLAW_GATEWAY_PORT=12345 # change this port to whatever you want
 export OPENCLAW_BRIDGE_PORT=12346 # change this port to whatever you want
-export OPENCLAW_GATEWAY_BIND=loopback
+export OPENCLAW_GATEWAY_BIND=lan # do not change or installation will fail, will be changed to lan during setup
 export REUSE_EXISTING_IMAGE=true
 export OPENCLAW_EXTENSIONS="ollama feishu discord slack whatsapp synology-chat imessage" # only works when REUSE_EXISTING_IMAGE=false and OPENCLAW_IMAGE=openclaw:local
 
@@ -29,7 +29,7 @@ export SEARXNG_SETTINGS_DIR=${HOME}/Projects/app_data/searxng
 export SEARXNG_IMAGE=${searxng_x86_image}
 
 if [[ -n "${1:-}" ]];then
-    docker compose -f ${COMPOSE_FILE} "$1"
+    docker compose -f ${COMPOSE_FILE} $@
     exit 0
 fi
 
@@ -63,12 +63,12 @@ ensure_control_ui_allowed_origins() {
   
   echo "Current gateway.controlUi.allowedOrigins:"
   docker compose -f ${COMPOSE_FILE} run --rm openclaw-cli \
-      config get gateway.controlUi.allowedOrigins 
+    config get gateway.controlUi.allowedOrigins 
   echo "Current gateway.bind:"
   docker compose -f ${COMPOSE_FILE} run --rm openclaw-cli \
-      config get gateway.bind
+    config get gateway.bind
 
-  sed -i '' "s/OPENCLAW_GATEWAY_BIND=loopback/OPENCLAW_GATEWAY_BIND=lan/" .env
+  sed -i '' "s/OPENCLAW_GATEWAY_BIND=.*/OPENCLAW_GATEWAY_BIND=lan/" .env
   export OPENCLAW_GATEWAY_BIND=lan
 }
 
@@ -118,14 +118,120 @@ enable_https() {
 
 disable_device_approve() {
   docker compose -f ${COMPOSE_FILE} run --rm openclaw-cli \
-  config set gateway.controlUi.dangerouslyDisableDeviceAuth true
+   config set gateway.controlUi.dangerouslyDisableDeviceAuth true
 }
 
+fix_compaction_issue() {
+  local config_file="${OPENCLAW_CONFIG_DIR}/openclaw.json"
+  python3 - "$config_file" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path, "r") as f:
+    cfg = json.load(f)
+cfg.setdefault("agents", {}).setdefault("defaults", {}).update({
+    "compaction": {
+        "mode": "default",
+        "maxHistoryShare": 0.6,
+        "reserveTokensFloor": 40000,
+        "memoryFlush": {
+            "enabled": True
+        }
+    },
+    "contextPruning": {
+        "mode": "cache-ttl"
+    }
+})
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+print("compaction config written to " + path)
+PY
+}
+
+config_searxng_in_openclaw_env() {
+  local config_file="${OPENCLAW_CONFIG_DIR}/openclaw.json"
+  python3 - "$config_file" "http://${SEARXNG_HOSTNAME}/" <<'PY'
+import json, sys
+path, searxng_url = sys.argv[1], sys.argv[2]
+with open(path, "r") as f:
+    cfg = json.load(f)
+cfg.setdefault("env", {})["SEARXNG_URL"] = searxng_url
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+print("SEARXNG_URL set to " + searxng_url)
+PY
+}
+
+enable_tools() {
+  local config_file="${OPENCLAW_CONFIG_DIR}/openclaw.json"
+  if [[ ! -f "$config_file" ]]; then
+    echo '{}' > "$config_file"
+  fi
+  python3 - "$config_file" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path, "r") as f:
+    cfg = json.load(f)
+cfg.setdefault("tools", {}).update({
+    "web": {
+        "search": {
+            "enabled": False
+        },
+        "fetch": {
+            "enabled": True,
+            "maxChars": 50000,
+            "maxCharsCap": 50000,
+            "timeoutSeconds": 30,
+            "cacheTtlMinutes": 15,
+            "maxRedirects": 3,
+            "readability": True
+        }
+    }
+})
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+print("tools config written to " + path)
+PY
+  mkdir -p "$OPENCLAW_CONFIG_DIR/skills/searxng"
+  cat > "$OPENCLAW_CONFIG_DIR/skills/searxng/SKILL.md" <<'EOF'
+---
+name: searxng
+description: 调用本地SearXNG实例进行隐私化网页搜索，返回结构化结果（支持中文/英文）。
+---
+
+## 核心配置
+- API地址: $SEARXNG_URL
+- 返回格式: JSON
+
+## 使用步骤
+1. 构造查询URL: `$SEARXNG_URL/search?q={urlencoded_query}&format=json`
+2. 用 exec 工具通过 curl 调用: `curl -s "$SEARXNG_URL/search?q=<query>&format=json"`
+3. 解析JSON结果，提取 results 数组，每条包含 title/url/content 字段
+
+## 错误处理
+- 若API超时/无响应：提示"SearXNG服务不可用，请检查实例状态"
+- 若结果为空：提示"未找到相关结果，请更换关键词重试"
+
+## 示例
+查询: "2026年实时金价"
+命令: curl -s "$SEARXNG_URL/search?q=2026年实时金价&format=json"
+EOF
+}
+
+setup_ollama() {
+  docker compose -f ${COMPOSE_FILE} run --rm openclaw-cli \
+    config set models.providers.ollama.apiKey "ollama-local"
+  docker compose -f ${COMPOSE_FILE} run --rm openclaw-cli \
+    models set ollama/qwen3.5:4b
+}
 
 save_searxng_config_2_env
 ensure_control_ui_allowed_origins
 enable_https
 disable_device_approve
+fix_compaction_issue
+## config_searxng_in_openclaw_env
+enable_tools
+setup_ollama
 
 cat .env
 
